@@ -1,0 +1,14 @@
+node_modules/
+android/
+ios/
+.expo/
+dist/
+assets/
+package-lock.json
+
+# Source-of-truth documents owned by the product, not by tooling.
+CLAUDE.md
+docs/MVP_SPEC.md
+
+# Plan documents owned by the product.
+docs/plans/

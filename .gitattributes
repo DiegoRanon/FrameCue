@@ -1,0 +1,5 @@
+# Keep line endings stable across the Windows dev machine and CI.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.keystore binary

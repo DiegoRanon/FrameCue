@@ -1,0 +1,12 @@
+{
+  "_comment": "Copy to framecue.local.json and fill in. That file is git-ignored and must never be committed.",
+  "_livekitUrl": "LiveKit Cloud project URL, e.g. wss://your-project.livekit.cloud",
+  "livekitUrl": "",
+
+  "_livekitRoom": "Room both devices join during development. Must match the tokens below.",
+  "livekitRoom": "framecue-dev",
+
+  "_tokens": "One per role: two devices need two identities or the second connection evicts the first. lk token create --api-key <key> --api-secret <secret> --join --room framecue-dev --identity coach --valid-for 24h",
+  "coachToken": "",
+  "studentToken": ""
+}
