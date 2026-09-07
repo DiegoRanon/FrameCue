@@ -188,3 +188,36 @@ give two React contexts, so `useRoomContext` would fail inside `LiveKitRoom`.
 `react-dom` is pinned to 19.2.3 purely to satisfy that package's `react-dom >= 18` peer without npm pulling
 19.2.8, which demands a newer React than Expo SDK 57 pins. It is a devDependency and nothing imports it, so
 it never reaches the bundle.
+
+---
+
+## D-012 - Replay quality follows the subscribed simulcast layer
+
+**Date:** 2026-09-06 **Status:** Observed constraint, needs a decision **Milestone:** M2
+
+The buffer encodes whatever the coach's client actually receives, which spec section 10 defines as the
+authoritative source. With `adaptiveStream` and simulcast enabled, LiveKit moves the coach between the
+student's 180p, 360p, and 720p layers depending on view size and bandwidth. During the M2 session the same
+call produced buffers at 180x320, 360x640, and 720x1280 within a few minutes.
+
+**Consequences:** A replay prepared during a downgrade is a 360p replay, which is weak for judging technique
+
+- the product's whole purpose. A resolution change also restarts the buffer, because the encoded stream is
+  no longer one decodable sequence, so `Prepare` becomes unavailable until enough new history accumulates
+  (spec section 3.2 behaviour, but triggered by bandwidth rather than a real interruption).
+
+**Options for M5:** pin the coach's subscription to the highest layer while the call is healthy
+(`setVideoQuality(HIGH)` on the student publication), accept adaptive quality, or pin only while a replay is
+pending. Pinning trades live-call resilience (NFR-06) for replay quality. **Not decided - needs the
+product call.**
+
+---
+
+## D-013 - Spike instrumentation is temporary and goes away with M3
+
+**Date:** 2026-09-06 **Status:** Accepted **Milestone:** M2
+
+`ReplayBufferPanel`, the `inspectClip` native function behind its Verify button, and the `dev-replay` screen
+exist to prove the pipeline, not to ship. M3 replaces the panel with the Replay Ready card (Show Replay,
+Replace, Discard) and `inspectClip` should go with it - spec section 4.2 rules thumbnails out of the
+interface, and this function only ever wrote a JPEG so the exported video could be checked by eye.

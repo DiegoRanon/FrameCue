@@ -1,3 +1,4 @@
+import type { TrackReference } from '@livekit/components-react';
 import {
   useConnectionQualityIndicator,
   useConnectionState,
@@ -24,8 +25,11 @@ type LiveCallLayoutProps = {
   emptyStageMessage: string;
   stageLabel: string;
   onLeave: () => void;
-  /** Role-specific area under the stage. M3 hangs the replay controls here. */
-  footer?: ReactNode;
+  /**
+   * Role-specific area under the stage, given the track on the stage so it can
+   * act on it. The coach's replay controls live here.
+   */
+  footer?: (remoteTrack: TrackReference | undefined) => ReactNode;
 };
 
 /**
@@ -84,7 +88,7 @@ export function LiveCallLayout({
         </View>
       </View>
 
-      {footer}
+      {footer?.(remoteTrack)}
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + spacing.sm }]}>
         <CallControls

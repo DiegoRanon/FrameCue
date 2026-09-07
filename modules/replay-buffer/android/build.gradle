@@ -1,0 +1,31 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.framecue.replaybuffer'
+version = '0.1.0'
+
+expoModule {
+  // Local to this app; never published to a registry.
+  canBePublished false
+}
+
+android {
+  namespace 'expo.modules.replaybuffer'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // org.webrtc.* classes and the module that owns the live track registry.
+  // compileOnly: the app already links this project at runtime through
+  // autolinking, so we only need it to compile against.
+  compileOnly project(':livekit_react-native-webrtc')
+
+  // WebRTCModule extends ReactContextBaseJavaModule, and that supertype is not
+  // exposed transitively, so we need React on the compile classpath too.
+  compileOnly 'com.facebook.react:react-android'
+}

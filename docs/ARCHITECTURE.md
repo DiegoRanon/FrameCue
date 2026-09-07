@@ -51,7 +51,8 @@ version control lives in `modules/`.
 1. The coach subscribes to the student's video track through LiveKit.
 2. `modules/replay-buffer` attaches a sink to that track and encodes frames on arrival, retaining the newest
    30-35 seconds of **encoded** samples. Encoding on ingest is what keeps the buffer at single-digit
-   megabytes instead of gigabytes (NFR-05).
+   megabytes instead of gigabytes (NFR-05): measured at 11 MB for 35 s of 720x1280 on a Pixel 7a.
+   Eviction drops whole GOPs, so the buffer always starts on a key frame and is always exportable.
 3. `prepare(15 | 30)` muxes the trailing interval into a temporary MP4 and returns its path and true
    duration. The live call is untouched, and the student sees nothing (FR-10).
 4. The clip is pushed to the student in the background while the replay sits pending (D-001).

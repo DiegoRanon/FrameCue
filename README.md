@@ -11,9 +11,10 @@ interrupting the student and without anything being recorded or saved.
 
 ## Status
 
-Milestone 1 - live 1-to-1 call. Pick a role on the development home screen and join; the other participant
-fills the stage, your own camera sits in a small tile, with mute, camera, and leave controls. Replay comes
-in M2-M4. A LiveKit project is required to run a real call.
+Milestone 2 - the coach's client buffers the incoming student video and can export the last 15 or 30
+seconds to a temporary MP4, without disturbing the live call. The coach screen currently shows spike
+instrumentation rather than the real Replay Ready card; showing a replay to the student is M4.
+A LiveKit project is required to run a real call.
 
 ## Requirements
 

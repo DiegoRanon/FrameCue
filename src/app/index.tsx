@@ -28,6 +28,15 @@ export default function Home() {
           ))}
         </View>
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open the replay buffer spike screen"
+          onPress={() => router.push('/dev-replay')}
+          style={({ pressed }) => [styles.devLink, pressed && styles.roleButtonPressed]}
+        >
+          <Text style={styles.devLinkText}>Replay buffer spike (development)</Text>
+        </Pressable>
+
         <View style={styles.status}>
           <Text style={styles.statusText}>
             {configured ? `Room: ${env.livekitRoom}` : 'LiveKit is not configured'}
@@ -68,6 +77,15 @@ function RoleButton({ role, disabled }: { role: CallRole; disabled: boolean }) {
 
 const styles = StyleSheet.create({
   content: { flexGrow: 1, gap: spacing.xl, justifyContent: 'center', padding: spacing.lg },
+  devLink: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: TOUCH_TARGET,
+  },
+  devLinkText: { color: colors.textMuted, fontSize: 14 },
   header: { alignItems: 'center', gap: spacing.xs },
   roleButton: {
     backgroundColor: colors.surfaceRaised,
