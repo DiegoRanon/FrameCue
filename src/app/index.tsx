@@ -28,15 +28,6 @@ export default function Home() {
           ))}
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open the replay buffer spike screen"
-          onPress={() => router.push('/dev-replay')}
-          style={({ pressed }) => [styles.devLink, pressed && styles.roleButtonPressed]}
-        >
-          <Text style={styles.devLinkText}>Replay buffer spike (development)</Text>
-        </Pressable>
-
         <View style={styles.status}>
           <Text style={styles.statusText}>
             {configured ? `Room: ${env.livekitRoom}` : 'LiveKit is not configured'}

@@ -1,13 +1,10 @@
 package expo.modules.replaybuffer
 
-import android.graphics.Bitmap
-import android.media.MediaMetadataRetriever
 import android.util.Log
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -114,55 +111,6 @@ class ReplayBufferModule : Module() {
       }
     }
 
-    /**
-     * Spike verification only (M2): decodes the clip with Android's own
-     * extractor and writes one frame as a JPEG, so the exported video can be
-     * checked for real rather than trusted. Not product behaviour - the spec
-     * explicitly rules thumbnails out of the interface (section 4.2).
-     */
-    AsyncFunction("inspectClip") { path: String, atSeconds: Double ->
-      runOnExecutor {
-        val file = File(path.removePrefix("file://"))
-        if (!file.exists()) {
-          throw ClipMissingException(file.absolutePath)
-        }
-
-        val retriever = MediaMetadataRetriever()
-        try {
-          retriever.setDataSource(file.absolutePath)
-          val frame = retriever.getFrameAtTime(
-            (atSeconds * 1_000_000).toLong(),
-            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-          )
-          val framePath = frame?.let { bitmap ->
-            val target = File(clipDirectory(), file.nameWithoutExtension + "-frame.jpg")
-            FileOutputStream(target).use { out ->
-              bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-            }
-            bitmap.recycle()
-            target.absolutePath
-          }
-
-          mapOf(
-            "decodedFrame" to (framePath != null),
-            "framePath" to framePath,
-            "durationMs" to retriever
-              .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull(),
-            "width" to retriever
-              .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull(),
-            "height" to retriever
-              .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull(),
-            "rotation" to retriever
-              .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull(),
-            "frameCount" to retriever
-              .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toIntOrNull(),
-          )
-        } finally {
-          runCatching { retriever.release() }
-        }
-      }
-    }
-
     /** FR-16: a discarded or replaced replay leaves nothing behind. */
     AsyncFunction("discardClip") { path: String ->
       runOnExecutor {
@@ -242,9 +190,6 @@ class ReplayBufferModule : Module() {
 
   private class NotReadyException :
     CodedException("Not enough buffered video yet to prepare a replay.")
-
-  private class ClipMissingException(path: String) :
-    CodedException("No clip at " + path + ".")
 
   private class NoContextException :
     CodedException("No Android context available for the replay buffer.")

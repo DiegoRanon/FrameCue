@@ -11,10 +11,10 @@ interrupting the student and without anything being recorded or saved.
 
 ## Status
 
-Milestone 2 - the coach's client buffers the incoming student video and can export the last 15 or 30
-seconds to a temporary MP4, without disturbing the live call. The coach screen currently shows spike
-instrumentation rather than the real Replay Ready card; showing a replay to the student is M4.
-A LiveKit project is required to run a real call.
+Milestone 3 - the coach can prepare the last 15 or 30 seconds, sees a Replay Ready card with Show Replay,
+Replace and Discard, and can review the replay with play, pause, seek, restart and 0.5x while the call stays
+live. Preparing and reviewing change nothing on the student's screen; putting the replay in front of the
+student is M4. A LiveKit project is required to run a real call.
 
 ## Requirements
 

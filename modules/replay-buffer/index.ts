@@ -50,24 +50,12 @@ export type TrackHandle = {
   trackId: string;
 };
 
-/** Spike verification only (M2); see the native module for why it exists. */
-export type ClipInspection = {
-  decodedFrame: boolean;
-  framePath: string | null;
-  durationMs: number | null;
-  width: number | null;
-  height: number | null;
-  rotation: number | null;
-  frameCount: number | null;
-};
-
 type ReplayBufferNativeModule = {
   probeTrack(peerConnectionId: number, trackId: string): Promise<TrackProbe>;
   start(peerConnectionId: number, trackId: string): Promise<boolean>;
   stop(): Promise<boolean>;
   getStatus(): ReplayBufferStatus;
   prepareClip(seconds: number): Promise<PreparedClip>;
-  inspectClip(path: string, atSeconds: number): Promise<ClipInspection>;
   discardClip(path: string): Promise<boolean>;
   clearAll(): Promise<number>;
 };
@@ -113,10 +101,6 @@ export function getStatus(): ReplayBufferStatus {
 
 export function prepareClip(seconds: 15 | 30): Promise<PreparedClip> {
   return requireNative().prepareClip(seconds);
-}
-
-export function inspectClip(path: string, atSeconds = 0.5): Promise<ClipInspection> {
-  return requireNative().inspectClip(path, atSeconds);
 }
 
 export function discardClip(path: string): Promise<boolean> {

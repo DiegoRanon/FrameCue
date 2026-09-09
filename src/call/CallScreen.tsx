@@ -1,4 +1,5 @@
 import { AudioSession, LiveKitRoom } from '@livekit/react-native';
+import { useKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useState } from 'react';
 
 import { CoachLiveView } from '@/call/CoachLiveView';
@@ -17,6 +18,11 @@ type Phase = 'checking' | 'denied' | 'ready';
  * connected, so the live views can assume a working call.
  */
 export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => void }) {
+  // A student on a tripod never touches the screen, so the device would sleep
+  // mid-drill and take the video with it. Held for the whole call screen and
+  // released automatically when it unmounts.
+  useKeepAwake();
+
   const [phase, setPhase] = useState<Phase>('checking');
   const [missingPermissions, setMissingPermissions] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);

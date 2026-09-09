@@ -12,3 +12,6 @@ docs/MVP_SPEC.md
 
 # Plan documents owned by the product.
 docs/plans/
+
+# Tooling configuration owned by Trunk.
+.trunk/

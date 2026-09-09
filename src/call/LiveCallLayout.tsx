@@ -1,12 +1,9 @@
-import type { TrackReference } from '@livekit/components-react';
 import {
   useConnectionQualityIndicator,
   useConnectionState,
   useLocalParticipant,
   useRoomContext,
-  useTracks,
 } from '@livekit/components-react';
-import { Track } from 'livekit-client';
 import type { ReactNode } from 'react';
 import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -18,6 +15,7 @@ import { LiveBadge } from '@/call/components/LiveBadge';
 import { SelfTile } from '@/call/components/SelfTile';
 import { VideoStage } from '@/call/components/VideoStage';
 import { describeConnection } from '@/call/connectionStatus';
+import { useCallTracks } from '@/call/useCallTracks';
 import { colors, spacing } from '@/theme';
 
 type LiveCallLayoutProps = {
@@ -25,23 +23,35 @@ type LiveCallLayoutProps = {
   emptyStageMessage: string;
   stageLabel: string;
   onLeave: () => void;
+  /** Role-specific area under the stage: replay controls for the coach. */
+  footer?: ReactNode;
   /**
-   * Role-specific area under the stage, given the track on the stage so it can
-   * act on it. The coach's replay controls live here.
+   * Replaces the live video on the stage. Used for replay review, which is the
+   * only thing that takes over the stage (spec section 4.2).
    */
-  footer?: (remoteTrack: TrackReference | undefined) => ReactNode;
+  stageContent?: ReactNode;
+  /** LIVE, or REVIEWING LAST 15/30 SECONDS while a replay is on screen. */
+  modeLabel?: string;
+  /** Hidden during review so nothing overlaps the replay. */
+  showSelfTile?: boolean;
 };
 
 /**
  * Shared live layout: the other participant fills the stage, own camera sits
  * in a small top-aligned tile, controls sit at the bottom. Both roles use it;
- * what differs between them is the copy and the footer.
+ * what differs is the copy, the footer, and whether the stage is taken over.
+ *
+ * The call itself is untouched by any of that - microphones and the connection
+ * keep running through review (FR-12).
  */
 export function LiveCallLayout({
   emptyStageMessage,
   stageLabel,
   onLeave,
   footer,
+  stageContent,
+  modeLabel = 'LIVE',
+  showSelfTile = true,
 }: LiveCallLayoutProps) {
   const insets = useSafeAreaInsets();
   const room = useRoomContext();
@@ -50,12 +60,9 @@ export function LiveCallLayout({
   // Explicit participant: this component sits outside a participant context,
   // and the hook has no default there.
   const { quality } = useConnectionQualityIndicator({ participant: localParticipant });
+  const { remoteTrack, localTrack } = useCallTracks();
 
   const status = describeConnection(connectionState, quality);
-
-  const cameraTracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
-  const remoteTrack = cameraTracks.find((track) => !track.participant.isLocal);
-  const localTrack = cameraTracks.find((track) => track.participant.isLocal);
 
   const toggleMic = useCallback(() => {
     void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
@@ -73,22 +80,24 @@ export function LiveCallLayout({
   return (
     <View style={styles.root}>
       <View style={styles.stageArea}>
-        <VideoStage
-          trackRef={remoteTrack}
-          emptyMessage={emptyStageMessage}
-          accessibilityLabel={stageLabel}
-        />
+        {stageContent ?? (
+          <VideoStage
+            trackRef={remoteTrack}
+            emptyMessage={emptyStageMessage}
+            accessibilityLabel={stageLabel}
+          />
+        )}
 
         <View style={[styles.overlayTop, { top: insets.top + spacing.sm }]} pointerEvents="none">
           <View style={styles.badges}>
-            <LiveBadge />
+            <LiveBadge label={modeLabel} />
             <ConnectionPill status={status} />
           </View>
-          <SelfTile trackRef={localTrack} cameraEnabled={isCameraEnabled} />
+          {showSelfTile ? <SelfTile trackRef={localTrack} cameraEnabled={isCameraEnabled} /> : null}
         </View>
       </View>
 
-      {footer?.(remoteTrack)}
+      {footer}
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + spacing.sm }]}>
         <CallControls

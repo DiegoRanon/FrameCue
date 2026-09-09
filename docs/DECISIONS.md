@@ -221,3 +221,61 @@ product call.**
 exist to prove the pipeline, not to ship. M3 replaces the panel with the Replay Ready card (Show Replay,
 Replace, Discard) and `inspectClip` should go with it - spec section 4.2 rules thumbnails out of the
 interface, and this function only ever wrote a JPEG so the exported video could be checked by eye.
+
+---
+
+## D-014 - expo-video for replay playback, not react-native-video
+
+**Date:** 2026-09-09 **Status:** Accepted, deviates from the approved plan **Milestone:** M3
+
+The plan named `react-native-video`; M3 uses `expo-video` instead, with the change approved before any code
+was written.
+
+**Why:** `expo-video@57.0.3` ships as part of Expo SDK 57, so its compatibility with React Native 0.86 is
+guaranteed by the same versioning that governs every other Expo package here. `react-native-video`'s stable
+6.19.2 predates RN 0.86 and declares a wildcard peer range, so npm would not have warned about a mismatch -
+the exact trap that produced the `worklets` C++ failure in M0. Its 7.x line is still in beta.
+
+**Cost / consequences:** Playback is driven by mutating player properties, which the React Compiler lint
+forbids inside components. That pushed the mutations into `src/replay/playerCommands.ts` as a `ReplayCommand`
+union - a better shape anyway, because M4 has to send exactly that vocabulary over the data channel, and now
+the wire protocol and the local controls cannot drift apart.
+
+One lifecycle trap cost real time and is worth remembering: `useVideoPlayer(source)` creates a _new_ player
+whenever the source changes and releases the old one. Holding a player across clip changes left commands
+silently doing nothing against a released instance. The app now keeps one player for the session and calls
+`replaceAsync` when a replay is shown, playing only once that promise resolves - commands issued before the
+source is ready are dropped.
+
+---
+
+## D-015 - Return to Live clears the pending replay
+
+**Date:** 2026-09-09 **Status:** Accepted, interpretation **Milestone:** M3
+
+After the coach returns to live, the replay is gone: the file is deleted and the card disappears. Showing it
+again means preparing a new one.
+
+**Why:** The section 10 risk table says the pending replay is cleared "after review, discard, replacement, or
+session end". Keeping a used replay around would also mean two ideas of "pending" - one shown, one not -
+against a spec that allows exactly one (section 5.1).
+
+**Cost / consequences:** A coach who wants a second look at the same moment must prepare it again, which the
+rolling buffer still allows because it keeps running throughout review (section 3.1.8). If pilot coaches ask
+for a re-show, this is the decision to revisit - FR-14 only requires that replay can be _used_ repeatedly,
+which it can.
+
+---
+
+## D-016 - The screen is kept awake for the whole call
+
+**Date:** 2026-09-09 **Status:** Accepted **Milestone:** M3
+
+`useKeepAwake()` in `CallScreen`, so it covers both roles and is released when the screen unmounts.
+
+**Why:** A student on a tripod never touches the phone, so it slept after about 30 seconds and took the video
+feed with it - which defeats FR-06 for the participant the whole product is pointed at. The coach was
+unaffected only because they keep tapping.
+
+**Cost / consequences:** Battery during a session, which is the right trade for a lesson-length call and
+matches what every video-call app does.

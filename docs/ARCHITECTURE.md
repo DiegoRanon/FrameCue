@@ -56,8 +56,10 @@ version control lives in `modules/`.
 3. `prepare(15 | 30)` muxes the trailing interval into a temporary MP4 and returns its path and true
    duration. The live call is untouched, and the student sees nothing (FR-10).
 4. The clip is pushed to the student in the background while the replay sits pending (D-001).
-5. `Show Replay` sends a control message; both sides play their local copy, coach commands authoritative,
-   drift corrected to under ~500 ms (NFR-02). Replay audio is muted; microphones are untouched (FR-12).
+5. `Show Replay` takes over the coach's stage with the clip, played from its first frame with play, pause,
+   seek, restart, and 0.5x (FR-11). Replay audio is muted; microphones are untouched (FR-12). The student
+   stays live throughout - M4 is what puts the replay on their screen too, driven by the same
+   `ReplayCommand` vocabulary in `src/replay/playerCommands.ts` over the data channel (NFR-02).
 6. `Return to Live` tears down review on both sides without touching the LiveKit connection (NFR-03).
 7. Discard, replace, return-to-live, session end, and app start all delete the clip and reset the buffer
    (FR-16, AC-12).
