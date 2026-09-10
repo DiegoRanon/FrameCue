@@ -1,4 +1,4 @@
-import { describeConnection } from './connectionStatus';
+import { describeConnection, replaySubscriptionQuality } from './connectionStatus';
 
 describe('describeConnection', () => {
   it('reports progress while the call is being established', () => {
@@ -34,5 +34,27 @@ describe('describeConnection', () => {
       tone: 'bad',
       isLive: false,
     });
+  });
+});
+
+describe('replaySubscriptionQuality', () => {
+  it('asks for the highest layer while the connection is healthy (D-012)', () => {
+    expect(replaySubscriptionQuality('good')).toBe('high');
+  });
+
+  it('releases the pin as soon as the connection is not healthy (NFR-06)', () => {
+    // Live video the lesson depends on outranks replay sharpness.
+    expect(replaySubscriptionQuality('warning')).toBe('low');
+    expect(replaySubscriptionQuality('bad')).toBe('low');
+  });
+
+  it('follows the tone already shown to the user, so the two cannot disagree', () => {
+    expect(replaySubscriptionQuality(describeConnection('connected', 'excellent').tone)).toBe(
+      'high',
+    );
+    expect(replaySubscriptionQuality(describeConnection('connected', 'poor').tone)).toBe('low');
+    expect(replaySubscriptionQuality(describeConnection('reconnecting', 'unknown').tone)).toBe(
+      'low',
+    );
   });
 });

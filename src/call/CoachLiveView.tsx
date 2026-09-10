@@ -3,6 +3,8 @@ import { useEffect } from 'react';
 
 import { LiveCallLayout } from '@/call/LiveCallLayout';
 import { useCallTracks } from '@/call/useCallTracks';
+import { useConnectionStatus } from '@/call/useConnectionStatus';
+import { useSubscriptionQuality } from '@/call/useSubscriptionQuality';
 import { ReplayControls } from '@/replay/ReplayControls';
 import { ReplayReviewControls } from '@/replay/ReplayReviewControls';
 import { ReplayReviewStage } from '@/replay/ReplayReviewStage';
@@ -20,9 +22,20 @@ import { useReplayDirector } from '@/replay/useReplayDirector';
  * clip transfer runs, in the background. Show Replay is what puts the replay on
  * both screens, and from then on every playback command the coach issues is
  * applied here and published to the student (AC-08, AC-09).
+ *
+ * Nothing here can end the call. Every replay failure surfaces as text on the
+ * coach's own controls and the live layout underneath is untouched (NFR-04,
+ * AC-14).
  */
 export function CoachLiveView({ onLeave }: { onLeave: () => void }) {
   const { remoteTrack } = useCallTracks();
+  const status = useConnectionStatus();
+
+  // Keeps the buffer on the student's highest layer while the link is healthy,
+  // so a replay is worth looking at (D-012). Released automatically when it is
+  // not, so the live call still adapts rather than freezing (NFR-06).
+  useSubscriptionQuality(remoteTrack, status.tone);
+
   const replay = usePendingReplay(remoteTrack);
   const delivery = useClipDelivery(replay.clip, replay.clipId);
 

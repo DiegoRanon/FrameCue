@@ -11,12 +11,12 @@ interrupting the student and without anything being recorded or saved.
 
 ## Status
 
-Milestone 4 - the coach can prepare the last 15 or 30 seconds, sees a Replay Ready card with Show Replay,
-Replace and Discard, and Show Replay now puts the replay on **both** screens. The clip is transferred to the
-student in the background while the replay is pending, so showing it is immediate, and the coach's play,
-pause, seek, restart and 0.5x are mirrored on the student's screen while both microphones stay live. The
-student has no playback controls. Return to Live restores the live view on both devices without rejoining.
-Preparing still changes nothing on the student's screen. A LiveKit project is required to run a real call.
+Milestone 5 - the full replay loop works on two devices: the coach prepares the last 15 or 30 seconds, the
+clip transfers in the background, and Show Replay puts it on both screens with the coach's play, pause,
+seek, restart and 0.5x mirrored to the student while both microphones stay live. M5 adds the cleanup and
+degraded-state work: nothing survives a leave, a force-close, or a dropped connection; a dropped connection
+offers Rejoin rather than a dead end; and the coach holds the student's highest video layer while the
+connection is healthy so replays stay sharp. A LiveKit project is required to run a real call.
 
 ## Requirements
 

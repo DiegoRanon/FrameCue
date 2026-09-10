@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { CoachLiveView } from '@/call/CoachLiveView';
 import { MessageScreen } from '@/call/components/MessageScreen';
+import { describeDisconnect, type DisconnectStatus } from '@/call/disconnectStatus';
 import { requestCallPermissions } from '@/call/permissions';
 import type { CallRole } from '@/call/roles';
 import { callRoomOptions } from '@/call/roomOptions';
@@ -27,6 +28,10 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
   const [missingPermissions, setMissingPermissions] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [dropped, setDropped] = useState<DisconnectStatus | null>(null);
+  // Changing this remounts LiveKitRoom, which is how Rejoin reconnects without
+  // sending the user back out to the role picker.
+  const [joinAttempt, setJoinAttempt] = useState(0);
 
   const config = livekitConfigFor(role);
 
@@ -47,6 +52,20 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
   const retryPermissions = useCallback(() => {
     setPhase('checking');
     setAttempt((value) => value + 1);
+  }, []);
+
+  /**
+   * AC-14: a dropped connection is a recoverable state, not a dead end. The
+   * live views unmount when this renders, which is what tears down the replay
+   * buffer and deletes any clip (FR-16).
+   */
+  const onDisconnected = useCallback((reason?: number) => {
+    setDropped(describeDisconnect(reason));
+  }, []);
+
+  const rejoin = useCallback(() => {
+    setDropped(null);
+    setJoinAttempt((value) => value + 1);
   }, []);
 
   useEffect(() => {
@@ -89,6 +108,17 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
     return <MessageScreen title="Getting ready" body="Checking camera and microphone access." />;
   }
 
+  if (dropped) {
+    return (
+      <MessageScreen
+        title={dropped.title}
+        body={dropped.body}
+        primaryAction={dropped.canRejoin ? { label: 'Rejoin', onPress: rejoin } : undefined}
+        secondaryAction={{ label: 'Back', onPress: onExit }}
+      />
+    );
+  }
+
   if (phase === 'denied') {
     return (
       <MessageScreen
@@ -103,6 +133,7 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
 
   return (
     <LiveKitRoom
+      key={joinAttempt}
       serverUrl={config.url}
       token={config.token}
       connect
@@ -110,6 +141,7 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
       video
       options={callRoomOptions}
       onError={(caught) => setError(caught.message)}
+      onDisconnected={onDisconnected}
     >
       {role === 'coach' ? <CoachLiveView onLeave={onExit} /> : <StudentLiveView onLeave={onExit} />}
     </LiveKitRoom>

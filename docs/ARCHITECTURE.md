@@ -38,7 +38,7 @@ Coach device                          Student device
 | `src/app`               | Expo Router screens. File-based routing also serves deep links. | M0+      |
 | `src/config`            | Environment resolution (`app.config.ts` extra -> typed access). | M0       |
 | `src/call`              | LiveKit room connection, track subscription, connection state.  | M1       |
-| `src/replay`            | Pending-replay state machine, native bridge, clip transfer.     | M2-M4    |
+| `src/replay`            | Pending-replay state machine, native bridge, clip transfer.     | M2-M5    |
 | `src/control`           | Data-channel message schema and transport. Coach is the source. | M4       |
 | `modules/replay-buffer` | Local Expo module. Kotlin now, Swift at M8, one TS interface.   | M2, M8   |
 | `scripts`               | Build helpers, e.g. pinning the Gradle JDK after prebuild.      | M0       |
@@ -94,6 +94,37 @@ local controls cannot drift apart.
 `src/replay/followerSync.ts` holds the whole correction rule as pure functions, so it is unit-tested rather
 than eyeballed on two phones. See D-018 through D-020 for why the transport is split in two, why there is a
 heartbeat, and what the coach's timestamp is and is not used for.
+
+## Lifecycle and cleanup
+
+Nothing survives a session, and the guarantee is enforced at every exit rather than in one place (FR-16,
+AC-12). What each event destroys:
+
+| Event                                     | Ring buffer      | Prepared clip (coach) | Received clip (student) |
+| ----------------------------------------- | ---------------- | --------------------- | ----------------------- |
+| Discard / Replace / Return to Live        | kept             | deleted               | deleted                 |
+| App backgrounded                          | stopped, emptied | **kept** (D-022)      | kept                    |
+| Leave, session end, fatal disconnect      | released         | deleted               | deleted                 |
+| App start (including after a force-close) | released         | deleted               | deleted                 |
+| Coach leaves mid-replay                   | -                | -                     | deleted                 |
+
+App start is the one that makes AC-12 true, because a force-close skips every other path.
+`src/replay/startupCleanup.ts` runs as a module side effect from the root layout, clearing both the native
+clip directory and the student's received-clip cache regardless of which role this device played last. The
+native module clears its own directory in `OnCreate` as well, so the guarantee does not depend on JavaScript
+having run.
+
+## Degraded states
+
+- **Connection dropped.** `LiveKitRoom.onDisconnected` maps the reason through `describeDisconnect` into a
+  recoverable screen with Rejoin, except when the participant left deliberately. Rejoining remounts the room
+  rather than sending the user back to the role picker (AC-14, FR-18).
+- **Replay failure never reaches the call.** Every replay path - native prepare, clip transfer, control
+  message decoding, player load - reports into the coach's own controls or is dropped, and the live layout
+  underneath is untouched (NFR-04).
+- **Quality.** The coach pins the student's highest simulcast layer while the connection is healthy and
+  releases it when it is not, so replays stay sharp without costing the live call its ability to adapt
+  (D-021, NFR-06).
 
 ## Constraints that shape the code
 

@@ -193,7 +193,7 @@ it never reaches the bundle.
 
 ## D-012 - Replay quality follows the subscribed simulcast layer
 
-**Date:** 2026-09-06 **Status:** Observed constraint, needs a decision **Milestone:** M2
+**Date:** 2026-09-06 **Status:** Resolved by D-021 **Milestone:** M2
 
 The buffer encodes whatever the coach's client actually receives, which spec section 10 defines as the
 authoritative source. With `adaptiveStream` and simulcast enabled, LiveKit moves the coach between the
@@ -208,8 +208,11 @@ call produced buffers at 180x320, 360x640, and 720x1280 within a few minutes.
 
 **Options for M5:** pin the coach's subscription to the highest layer while the call is healthy
 (`setVideoQuality(HIGH)` on the student publication), accept adaptive quality, or pin only while a replay is
-pending. Pinning trades live-call resilience (NFR-06) for replay quality. **Not decided - needs the
-product call.**
+pending. Pinning trades live-call resilience (NFR-06) for replay quality. **Resolved in M5 - see D-021.**
+
+Note for the record that the third option, pinning only while a replay is pending, cannot work: the clip is
+cut from history the buffer already holds, so by the time a replay is pending the frames have been encoded
+at whatever layer was arriving at the time. Quality has to be decided continuously or not at all.
 
 ---
 
@@ -370,3 +373,65 @@ Return to Live, and the student must not be left holding a frozen clip with the 
 
 **Cost / consequences:** Two callers of the teardown instead of one declarative rule, which is why it lives
 in a single `endReview` callback rather than being written twice.
+
+---
+
+## D-021 - Pin the coach to the highest simulcast layer while the connection is healthy
+
+**Date:** 2026-09-09 **Status:** Accepted, resolves D-012 **Milestone:** M5
+
+`setVideoQuality(HIGH)` on the student's camera publication whenever the connection status shown on screen
+is healthy, released to `LOW` the moment it is not, and restored when it recovers.
+
+**Why:** The replay is cut from whatever the coach actually receives, so an adaptive downgrade produces a
+360p replay of the movement the product exists to judge. Pinning also stops the buffer restarting every time
+the layer changes, which was making `Prepare` unavailable mid-lesson for reasons the coach could not see -
+a section 3.2 degraded state triggered by bandwidth rather than a real interruption.
+
+Releasing the pin on anything but a healthy connection is what keeps NFR-06 intact. Live video the lesson
+depends on outranks replay sharpness, so the client can still step down rather than freeze.
+
+The decision is driven by the same `ConnectionStatus` the badge renders, via `useConnectionStatus`, so the
+layer the coach asks for and the state the coach is shown cannot disagree.
+
+**Cost / consequences:** On a link that is degrading but not yet reported as poor, the coach holds a high
+layer slightly longer than pure adaptation would. `adaptiveStream` still governs subscription based on what
+is rendered, which is why D-023 matters.
+
+---
+
+## D-022 - Backgrounding clears the buffer but keeps a prepared replay
+
+**Date:** 2026-09-09 **Status:** Accepted, narrows the approved plan **Milestone:** M5
+
+The plan said to destroy chunks, MP4s and the pending replay on background. On backgrounding, FrameCue stops
+the encoder and empties the ring buffer, but keeps an already-prepared replay.
+
+**Why:** The two are not the same kind of thing. The ring buffer is live memory holding the student's video,
+and Android stops delivering frames in the background anyway - a buffer that survived would have an
+invisible hole in it, and `canPrepare` would be lying. The prepared replay is a file the coach deliberately
+made and is waiting to show; losing it because they glanced at a notification throws away the moment they
+were waiting for, and the file is deleted by every other FR-16 trigger regardless.
+
+**Cost / consequences:** A prepared replay can outlive a brief backgrounding, so a clip file exists in the
+cache while the app is not in the foreground. It is still deleted on discard, replace, return-to-live,
+leave, fatal disconnect, and app start, and `startupCleanup` wipes it after a force-close (AC-12). On return
+the Prepare countdown starts again from empty, which is honest: the window really was interrupted.
+
+---
+
+## D-023 - The live stage is covered during review, never unmounted
+
+**Date:** 2026-09-09 **Status:** Accepted **Milestone:** M5
+
+`LiveCallLayout` renders the live `VideoStage` at all times and overlays replay review on top of it, rather
+than swapping one for the other.
+
+**Why:** `adaptiveStream` decides what to subscribe to from what is actually being rendered. Unmounting the
+live stage during review pauses the incoming track, which stalls the coach's rolling buffer exactly when
+section 3.1.8 says it must keep running - so the first replay of a session would poison the next one. It
+also makes Return to Live wait for a re-subscribe instead of being instant (NFR-03).
+
+**Cost / consequences:** The live video keeps decoding underneath a replay that completely covers it, which
+costs some GPU and battery during review. The covered stage is removed from the accessibility tree so a
+screen reader does not announce two stages.

@@ -1,4 +1,5 @@
 import {
+  clearAll,
   discardClip,
   getStatus,
   IDLE_STATUS,
@@ -21,6 +22,7 @@ import {
   type PendingReplayPhase,
   type ReplayDuration,
 } from '@/replay/pendingReplay';
+import { useAppActive } from '@/call/useAppActive';
 import { trackHandleFor } from '@/replay/trackHandle';
 
 export type PendingReplayControls = {
@@ -65,8 +67,16 @@ export function usePendingReplay(trackRef: TrackReferenceLike): PendingReplayCon
   const [status, setStatus] = useState<ReplayBufferStatus>(IDLE_STATUS);
   const [state, dispatch] = useReducer(pendingReplayReducer, initialPendingReplay);
 
+  // Backgrounding stops the buffer and empties it (FR-16). A pending replay is
+  // deliberately kept: it is already a written file, and losing it because the
+  // coach glanced at a notification would throw away the moment they were
+  // waiting to show. On return, buffering restarts from empty, so the
+  // countdown to Prepare runs again - which is honest, because the window
+  // really was interrupted (section 3.2).
+  const appActive = useAppActive();
+
   useEffect(() => {
-    if (peerConnectionId === null || trackId === null || !isReplayBufferAvailable) {
+    if (peerConnectionId === null || trackId === null || !isReplayBufferAvailable || !appActive) {
       return;
     }
 
@@ -81,7 +91,7 @@ export function usePendingReplay(trackRef: TrackReferenceLike): PendingReplayCon
       cancelled = true;
       void stopBuffering().catch(() => undefined);
     };
-  }, [peerConnectionId, trackId]);
+  }, [appActive, peerConnectionId, trackId]);
 
   useEffect(() => {
     if (!isReplayBufferAvailable) {
@@ -132,13 +142,17 @@ export function usePendingReplay(trackRef: TrackReferenceLike): PendingReplayCon
     }
   }, [currentPath]);
 
-  // Leaving the session takes the last clip with it.
+  /**
+   * Leaving the session takes everything with it: the encoder is released, the
+   * ring buffer emptied, and every clip file deleted (FR-16).
+   *
+   * This runs on a deliberate Leave and equally on a fatal disconnect, because
+   * both unmount the live view. `clearAll` rather than discarding the one known
+   * path, so a clip orphaned by a failure earlier in the session goes too.
+   */
   useEffect(
     () => () => {
-      const remaining = lastPathRef.current;
-      if (remaining) {
-        void discardClip(remaining).catch(() => undefined);
-      }
+      void clearAll().catch(() => undefined);
     },
     [],
   );

@@ -1,9 +1,4 @@
-import {
-  useConnectionQualityIndicator,
-  useConnectionState,
-  useLocalParticipant,
-  useRoomContext,
-} from '@livekit/components-react';
+import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import type { ReactNode } from 'react';
 import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -14,8 +9,8 @@ import { ConnectionPill } from '@/call/components/ConnectionPill';
 import { LiveBadge } from '@/call/components/LiveBadge';
 import { SelfTile } from '@/call/components/SelfTile';
 import { VideoStage } from '@/call/components/VideoStage';
-import { describeConnection } from '@/call/connectionStatus';
 import { useCallTracks } from '@/call/useCallTracks';
+import { useConnectionStatus } from '@/call/useConnectionStatus';
 import { colors, spacing } from '@/theme';
 
 type LiveCallLayoutProps = {
@@ -26,8 +21,9 @@ type LiveCallLayoutProps = {
   /** Role-specific area under the stage: replay controls for the coach. */
   footer?: ReactNode;
   /**
-   * Replaces the live video on the stage. Used for replay review, which is the
-   * only thing that takes over the stage (spec section 4.2).
+   * Covers the live video on the stage. Used for replay review, which is the
+   * only thing that takes over the stage (spec section 4.2). The live stage
+   * stays mounted underneath - see the note in the component.
    */
   stageContent?: ReactNode;
   /** LIVE, or REVIEWING LAST 15/30 SECONDS while a replay is on screen. */
@@ -55,14 +51,11 @@ export function LiveCallLayout({
 }: LiveCallLayoutProps) {
   const insets = useSafeAreaInsets();
   const room = useRoomContext();
-  const connectionState = useConnectionState();
   const { localParticipant, isCameraEnabled, isMicrophoneEnabled } = useLocalParticipant();
-  // Explicit participant: this component sits outside a participant context,
-  // and the hook has no default there.
-  const { quality } = useConnectionQualityIndicator({ participant: localParticipant });
   const { remoteTrack, localTrack } = useCallTracks();
 
-  const status = describeConnection(connectionState, quality);
+  const status = useConnectionStatus();
+  const reviewing = Boolean(stageContent);
 
   const toggleMic = useCallback(() => {
     void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
@@ -80,13 +73,27 @@ export function LiveCallLayout({
   return (
     <View style={styles.root}>
       <View style={styles.stageArea}>
-        {stageContent ?? (
+        {/*
+          The live stage is never unmounted, only covered. `adaptiveStream`
+          decides what to subscribe to from what is actually being rendered, so
+          tearing this out during review would pause the incoming track - which
+          would stall the coach's rolling buffer exactly when section 3.1.8
+          says it must keep running, and make Return to Live wait for a
+          re-subscribe instead of being instant (NFR-03).
+        */}
+        <View
+          style={styles.stageFill}
+          accessibilityElementsHidden={reviewing}
+          importantForAccessibility={reviewing ? 'no-hide-descendants' : 'auto'}
+        >
           <VideoStage
             trackRef={remoteTrack}
             emptyMessage={emptyStageMessage}
             accessibilityLabel={stageLabel}
           />
-        )}
+        </View>
+
+        {stageContent ? <View style={styles.stageFill}>{stageContent}</View> : null}
 
         <View style={[styles.overlayTop, { top: insets.top + spacing.sm }]} pointerEvents="none">
           <View style={styles.badges}>
@@ -125,4 +132,5 @@ const styles = StyleSheet.create({
   },
   root: { backgroundColor: colors.background, flex: 1 },
   stageArea: { flex: 1 },
+  stageFill: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
 });
