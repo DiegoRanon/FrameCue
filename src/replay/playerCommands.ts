@@ -25,7 +25,8 @@ export type ReplayRate = 0.5 | 1;
 /** Treated as the end of the clip; playback rarely lands exactly on duration. */
 const END_EPSILON_SECONDS = 0.15;
 
-function hasEnded(player: VideoPlayer): boolean {
+/** Exported because the coach announces a restart-on-play to the student. */
+export function hasReachedEnd(player: VideoPlayer): boolean {
   return player.duration > 0 && player.currentTime >= player.duration - END_EPSILON_SECONDS;
 }
 
@@ -34,7 +35,7 @@ export function applyReplayCommand(player: VideoPlayer, command: ReplayCommand):
     case 'play':
       // Play on a finished clip starts it again rather than doing nothing,
       // which is what a coach pressing Play expects.
-      if (hasEnded(player)) {
+      if (hasReachedEnd(player)) {
         player.replay();
       } else {
         player.play();

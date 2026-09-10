@@ -11,10 +11,12 @@ interrupting the student and without anything being recorded or saved.
 
 ## Status
 
-Milestone 3 - the coach can prepare the last 15 or 30 seconds, sees a Replay Ready card with Show Replay,
-Replace and Discard, and can review the replay with play, pause, seek, restart and 0.5x while the call stays
-live. Preparing and reviewing change nothing on the student's screen; putting the replay in front of the
-student is M4. A LiveKit project is required to run a real call.
+Milestone 4 - the coach can prepare the last 15 or 30 seconds, sees a Replay Ready card with Show Replay,
+Replace and Discard, and Show Replay now puts the replay on **both** screens. The clip is transferred to the
+student in the background while the replay is pending, so showing it is immediate, and the coach's play,
+pause, seek, restart and 0.5x are mirrored on the student's screen while both microphones stay live. The
+student has no playback controls. Return to Live restores the live view on both devices without rejoining.
+Preparing still changes nothing on the student's screen. A LiveKit project is required to run a real call.
 
 ## Requirements
 

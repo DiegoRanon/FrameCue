@@ -279,3 +279,94 @@ unaffected only because they keep tapping.
 
 **Cost / consequences:** Battery during a session, which is the right trade for a lesson-length call and
 matches what every video-call app does.
+
+---
+
+## D-017 - `expo-file-system` for reading and writing clip bytes
+
+**Date:** 2026-09-09 **Status:** Accepted, approved before implementation **Milestone:** M4
+
+M4 has to read the prepared MP4 into JavaScript to push it over a LiveKit byte stream, and write the
+received bytes back to a file on the student's device. Nothing in the project did file I/O. The alternative
+considered was extending `modules/replay-buffer` with `readClipBytes` / `openIncomingClip` in Kotlin.
+
+**Why:** `expo-file-system@~57.0.6` is the version pinned by Expo SDK 57, so its compatibility with React
+Native 0.86 is guaranteed by the same versioning that governs every other Expo package here - the same
+reasoning as D-014. Its `FileHandle` reads and writes at an offset, so a 6 MB clip never has to exist in
+JavaScript memory in one piece. It works on both platforms, so M8's iOS work inherits it rather than
+needing a second native implementation.
+
+**Cost / consequences:** One more native dependency, so a dev-client rebuild is required. Clip files are now
+touched from two places - the native module owns the coach's prepared clips, `src/replay/clipTransfer.ts`
+owns the student's received copies - so FR-16 cleanup has to be right in both.
+
+---
+
+## D-018 - Control messages are reliable data packets; the clip goes over a byte stream
+
+**Date:** 2026-09-09 **Status:** Accepted **Milestone:** M4
+
+Two LiveKit topics. `framecue.replay.control` carries zod-validated JSON control messages as reliable data
+packets. `framecue.replay.clip` carries the MP4 as a byte stream.
+
+**Why:** A control message is a few hundred bytes and arrives in one round trip; a data stream would add a
+header-chunks-trailer sequence to every Pause. Keeping the clip on its own topic means a 6 MB transfer
+cannot delay a command the coach just issued. Both are validated on arrival and a message that fails
+validation is dropped rather than throwing, because a control message is the one place a peer hands this
+app arbitrary bytes and a replay failure must never end the call (NFR-04).
+
+Messages are broadcast rather than addressed to an identity: a session has exactly one coach and one
+student (spec section 5.1), so "everyone else" is the student, and not depending on a resolved participant
+identity removes a way for Show Replay to silently go nowhere. The clip transfer _is_ addressed, because it
+should not start before there is someone to receive it.
+
+**Cost / consequences:** The protocol is JSON, which is larger than a binary encoding and irrelevant at this
+message rate. A group session would need addressing before anything else.
+
+---
+
+## D-019 - The coach broadcasts a 1 Hz playback heartbeat, not just commands
+
+**Date:** 2026-09-09 **Status:** Accepted, extends the approved plan **Milestone:** M4
+
+The plan listed `show`, `play`, `pause`, `seek`, `restart`, `rate`, `returnLive`. Those all exist and carry
+the coach's clock timestamp as specified. Added to them is `sync`: the same payload, sent once a second
+while a replay is on screen, and again whenever the coach's player reports that it started, stopped, or
+changed rate.
+
+**Why:** Commands alone make the student's position correct at the instant each one arrives and never again.
+Two independently decoding players drift - different buffering, different frame pacing, and 0.5x playback
+doubles the wall-clock time over which any drift accumulates. NFR-02 asks for positions within ~500 ms, so
+the follower is told the truth every second and corrects only when it is more than 300 ms out. That
+tolerance exists because below it, seeking corrects less than the visible stutter it causes.
+
+**Cost / consequences:** One extra message per second on a channel that is already carrying live media, and
+no additional protocol surface - `sync` is the same shape as every other clip message.
+
+Every message carries the coach's authoritative playback state rather than a bare verb, which makes the
+protocol self-healing: a follower that missed a message is corrected by the next one instead of staying
+wrong. Note what the coach's timestamp is _not_ used for. Elapsed time is measured from the follower's own
+arrival time, because the two devices' clocks are unrelated and subtracting one from the other would bake in
+an arbitrary offset. The timestamp's job is to discard a message that arrives after a newer one. This treats
+one-way latency as zero, which on a reliable data channel is tens of milliseconds - an order of magnitude
+inside the budget, and the only term measurable without a clock-sync handshake the MVP does not need.
+
+---
+
+## D-020 - Return to Live is an event, not a state to synchronize
+
+**Date:** 2026-09-09 **Status:** Accepted **Milestone:** M4
+
+On the student's device, leaving review pauses the player, unloads the source, and deletes the received clip
+inside the control-message handler rather than in an effect keyed on "am I reviewing".
+
+**Why:** NFR-03 gives it one second, and an effect adds a render cycle before any of it starts. It is also
+what the React Compiler lint asks for - calling `setState` synchronously inside an effect body is an error
+in this project - and the rule is right here: this is a reaction to something that happened, not
+synchronization with an external system.
+
+The same teardown runs when the remote participant disconnects. A coach who leaves mid-replay never sends
+Return to Live, and the student must not be left holding a frozen clip with the call gone.
+
+**Cost / consequences:** Two callers of the teardown instead of one declarative rule, which is why it lives
+in a single `endReview` callback rather than being written twice.

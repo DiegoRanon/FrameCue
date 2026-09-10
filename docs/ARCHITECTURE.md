@@ -38,7 +38,7 @@ Coach device                          Student device
 | `src/app`               | Expo Router screens. File-based routing also serves deep links. | M0+      |
 | `src/config`            | Environment resolution (`app.config.ts` extra -> typed access). | M0       |
 | `src/call`              | LiveKit room connection, track subscription, connection state.  | M1       |
-| `src/replay`            | Pending-replay state machine and the native module bridge.      | M2, M3   |
+| `src/replay`            | Pending-replay state machine, native bridge, clip transfer.     | M2-M4    |
 | `src/control`           | Data-channel message schema and transport. Coach is the source. | M4       |
 | `modules/replay-buffer` | Local Expo module. Kotlin now, Swift at M8, one TS interface.   | M2, M8   |
 | `scripts`               | Build helpers, e.g. pinning the Gradle JDK after prebuild.      | M0       |
@@ -55,14 +55,45 @@ version control lives in `modules/`.
    Eviction drops whole GOPs, so the buffer always starts on a key frame and is always exportable.
 3. `prepare(15 | 30)` muxes the trailing interval into a temporary MP4 and returns its path and true
    duration. The live call is untouched, and the student sees nothing (FR-10).
-4. The clip is pushed to the student in the background while the replay sits pending (D-001).
-5. `Show Replay` takes over the coach's stage with the clip, played from its first frame with play, pause,
-   seek, restart, and 0.5x (FR-11). Replay audio is muted; microphones are untouched (FR-12). The student
-   stays live throughout - M4 is what puts the replay on their screen too, driven by the same
-   `ReplayCommand` vocabulary in `src/replay/playerCommands.ts` over the data channel (NFR-02).
-6. `Return to Live` tears down review on both sides without touching the LiveKit connection (NFR-03).
-7. Discard, replace, return-to-live, session end, and app start all delete the clip and reset the buffer
+4. The clip is pushed to the student in the background while the replay sits pending (D-001), over a LiveKit
+   byte stream on its own topic. The student writes it straight to a cache file, a chunk at a time. The
+   coach is never blocked on this: the transfer is reported on the Replay Ready card and only an outright
+   failure holds Show Replay back, with a retry (section 3.2).
+5. `Show Replay` takes over the stage on **both** devices with each device's own local copy of the clip,
+   played from its first frame with play, pause, seek, restart, and 0.5x (FR-11). Replay audio is muted;
+   microphones are untouched (FR-12).
+6. Every coach command is applied locally and published in the same call, and the coach restates the true
+   playback state once a second. The student's player is steered to match and never originates anything
+   (NFR-02, AC-09).
+7. `Return to Live` tears down review on both sides without touching the LiveKit connection (NFR-03).
+8. Discard, replace, return-to-live, session end, and app start all delete the clip and reset the buffer
    (FR-16, AC-12).
+
+## Synchronized review
+
+```
+Coach                                            Student
+  Prepare -----> clip written to cache
+                 |
+                 +-- byte stream (framecue.replay.clip) --> cache file
+                                                            (arrives while pending)
+  Show Replay --- show -----------------------------------> load + first frame
+  Play / Pause / Seek / Restart / 0.5x
+               --- play|pause|seek|restart|rate ----------> apply
+               --- sync, 1 Hz + on every player change ---> correct if >300 ms out
+  Return to Live
+               --- returnLive ---------------------------> unload, delete, back to live
+```
+
+The coach is authoritative and nothing waits on the student; publishing is fire-and-forget. Every message
+carries the coach's whole playback state rather than a bare verb, so a follower that missed one is corrected
+by the next rather than staying wrong. The commands sent are exactly the `ReplayCommand` union in
+`src/replay/playerCommands.ts`, which is also what drives the coach's own player - the wire protocol and the
+local controls cannot drift apart.
+
+`src/replay/followerSync.ts` holds the whole correction rule as pure functions, so it is unit-tested rather
+than eyeballed on two phones. See D-018 through D-020 for why the transport is split in two, why there is a
+heartbeat, and what the coach's timestamp is and is not used for.
 
 ## Constraints that shape the code
 
@@ -70,5 +101,8 @@ version control lives in `modules/`.
   gallery. Clips live in the cache directory and are deleted explicitly.
 - **Preparing must never disturb the live call.** Encoding runs off the render path; a failure in the replay
   pipeline is reported and swallowed, never propagated into the call (NFR-04).
-- **The coach is authoritative.** The student's UI renders received state and sends nothing.
+- **The coach is authoritative.** The student's UI renders received state and sends nothing. The student has
+  no playback controls at all - two people scrubbing the same replay would immediately disagree.
+- **A control message is untrusted input.** It is the one place a peer hands this app arbitrary bytes, so it
+  is schema-validated and dropped on failure, never thrown (NFR-04).
 - **Bounded memory.** The ring buffer has a hard cap; ten prepare/show cycles must not grow it (AC-11).

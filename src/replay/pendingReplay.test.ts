@@ -2,6 +2,8 @@ import type { PreparedClip } from '@modules/replay-buffer';
 
 import {
   canPrepare,
+  clipIdFor,
+  durationOf,
   initialPendingReplay,
   modeLabelFor,
   pendingReplayReducer,
@@ -186,5 +188,29 @@ describe('modeLabelFor', () => {
     const reviewing30 = pendingReplayReducer(readyWith(30), { type: 'show' });
     expect(modeLabelFor(reviewing15)).toBe('REVIEWING LAST 15 SECONDS');
     expect(modeLabelFor(reviewing30)).toBe('REVIEWING LAST 30 SECONDS');
+  });
+});
+
+describe('clipIdFor', () => {
+  it('is stable for the same clip', () => {
+    expect(clipIdFor(clip(15))).toBe(clipIdFor(clip(15)));
+  });
+
+  it('differs between clips, which is what keeps the student on the right one', () => {
+    expect(clipIdFor(clip(15, '/cache/replay-1.mp4'))).not.toBe(
+      clipIdFor(clip(15, '/cache/replay-2.mp4')),
+    );
+  });
+
+  it('carries no filename, so nothing suggests a saved file (section 4.2, NFR-10)', () => {
+    expect(clipIdFor(clip(15, '/cache/replay-1.mp4'))).not.toContain('replay-1');
+    expect(clipIdFor(clip(15))).not.toContain('.mp4');
+  });
+});
+
+describe('durationOf', () => {
+  it('narrows the native duration to the two the product offers', () => {
+    expect(durationOf(clip(15))).toBe(15);
+    expect(durationOf(clip(30))).toBe(30);
   });
 });

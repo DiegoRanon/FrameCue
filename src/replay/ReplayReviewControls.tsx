@@ -4,12 +4,18 @@ import type { VideoPlayer } from 'expo-video';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
-import { applyReplayCommand, type ReplayRate } from '@/replay/playerCommands';
+import type { ReplayCommand, ReplayRate } from '@/replay/playerCommands';
 import { colors, radius, spacing, TOUCH_TARGET } from '@/theme';
 
 type ReplayReviewControlsProps = {
   player: VideoPlayer;
   clip: PreparedClip;
+  /**
+   * Commands go out through the caller rather than straight to the player, so
+   * the same press that moves the coach's playback also moves the student's
+   * (AC-09). The panel stays unaware of the data channel.
+   */
+  onCommand: (command: ReplayCommand) => void;
   onReturnToLive: () => void;
 };
 
@@ -19,7 +25,12 @@ type ReplayReviewControlsProps = {
  * Live microphones are untouched by everything here - the coach talks over the
  * replay, which is the point of the whole feature (FR-12).
  */
-export function ReplayReviewControls({ player, clip, onReturnToLive }: ReplayReviewControlsProps) {
+export function ReplayReviewControls({
+  player,
+  clip,
+  onCommand,
+  onReturnToLive,
+}: ReplayReviewControlsProps) {
   const [trackWidth, setTrackWidth] = useState(0);
   // Playback state is held here rather than read straight from events, so a
   // seek made while paused moves the timeline immediately: the player only
@@ -51,28 +62,28 @@ export function ReplayReviewControls({ player, clip, onReturnToLive }: ReplayRev
       const fraction = Math.min(Math.max(x / trackWidth, 0), 1);
       const seconds = fraction * duration;
       setCurrentTime(seconds);
-      applyReplayCommand(player, { type: 'seek', seconds });
+      onCommand({ type: 'seek', seconds });
     },
-    [duration, player, trackWidth],
+    [duration, onCommand, trackWidth],
   );
 
   const togglePlayback = useCallback(() => {
     if (!isPlaying && currentTime >= duration - 0.15) {
       setCurrentTime(0);
     }
-    applyReplayCommand(player, { type: isPlaying ? 'pause' : 'play' });
-  }, [currentTime, duration, isPlaying, player]);
+    onCommand({ type: isPlaying ? 'pause' : 'play' });
+  }, [currentTime, duration, isPlaying, onCommand]);
 
   const restart = useCallback(() => {
     setCurrentTime(0);
-    applyReplayCommand(player, { type: 'restart' });
-  }, [player]);
+    onCommand({ type: 'restart' });
+  }, [onCommand]);
 
   const toggleRate = useCallback(() => {
     const next: ReplayRate = rate === 1 ? 0.5 : 1;
     setRate(next);
-    applyReplayCommand(player, { type: 'rate', rate: next });
-  }, [player, rate]);
+    onCommand({ type: 'rate', rate: next });
+  }, [onCommand, rate]);
 
   return (
     <View style={styles.panel}>

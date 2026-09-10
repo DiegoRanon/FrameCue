@@ -158,6 +158,29 @@ export function secondsUntilAvailable(
   return remaining > 0 ? remaining : null;
 }
 
+/**
+ * A stable, opaque id for a prepared clip, used to address it on the wire and
+ * to name the student's local copy.
+ *
+ * Derived from the clip's path, which the native side makes unique per prepare,
+ * by an FNV-1a hash - so the id is deterministic without carrying a filename
+ * into the protocol or anywhere near a log line (NFR-10, and the section 4.2
+ * rule that nothing in the product may suggest a saved file).
+ */
+export function clipIdFor(clip: PreparedClip): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < clip.path.length; index += 1) {
+    hash ^= clip.path.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `clip-${hash.toString(36)}`;
+}
+
+/** The clip's duration as the union the rest of the code speaks in. */
+export function durationOf(clip: PreparedClip): ReplayDuration {
+  return clip.requestedSeconds === 30 ? 30 : 15;
+}
+
 /** Section 4.2: only Show Replay changes the mode label. */
 export function modeLabelFor(state: PendingReplayState): string {
   if (state.phase !== 'reviewing' || !state.clip) {

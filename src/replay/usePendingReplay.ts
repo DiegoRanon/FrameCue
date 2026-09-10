@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 
 import {
   canPrepare,
+  clipIdFor,
   initialPendingReplay,
   modeLabelFor,
   pendingReplayReducer,
@@ -25,6 +26,8 @@ import { trackHandleFor } from '@/replay/trackHandle';
 export type PendingReplayControls = {
   phase: PendingReplayPhase;
   clip: PreparedClip | null;
+  /** Opaque id the clip is addressed by on the wire; null when none is pending. */
+  clipId: string | null;
   status: ReplayBufferStatus;
   error: string | null;
   /** Duration awaiting confirmation, null when the coach still has to choose. */
@@ -157,6 +160,7 @@ export function usePendingReplay(trackRef: TrackReferenceLike): PendingReplayCon
   return {
     phase: state.phase,
     clip: state.clip,
+    clipId: state.clip ? clipIdFor(state.clip) : null,
     status,
     error: state.error,
     pendingSeconds: state.requestedSeconds,

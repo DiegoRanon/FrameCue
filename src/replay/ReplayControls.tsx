@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import type { ClipDelivery } from '@/replay/useClipDelivery';
 import type { PendingReplayControls } from '@/replay/usePendingReplay';
 import { colors, radius, spacing, TOUCH_TARGET } from '@/theme';
 
@@ -10,7 +11,13 @@ import { colors, radius, spacing, TOUCH_TARGET } from '@/theme';
  * something is pending, and the replacement confirmation. All coach-only - the
  * student's screen never changes because of anything here (FR-10).
  */
-export function ReplayControls({ replay }: { replay: PendingReplayControls }) {
+export function ReplayControls({
+  replay,
+  delivery,
+}: {
+  replay: PendingReplayControls;
+  delivery: ClipDelivery;
+}) {
   const preparing = replay.phase === 'preparing';
 
   return (
@@ -19,7 +26,7 @@ export function ReplayControls({ replay }: { replay: PendingReplayControls }) {
         <ReplaceConfirmation replay={replay} />
       ) : (
         <>
-          {replay.clip ? <ReplayReadyCard replay={replay} /> : null}
+          {replay.clip ? <ReplayReadyCard replay={replay} delivery={delivery} /> : null}
           <View style={styles.prepareRow}>
             <PrepareButton
               label="Prepare 15s"
@@ -47,37 +54,87 @@ export function ReplayControls({ replay }: { replay: PendingReplayControls }) {
 /**
  * Spec section 4: coach-only card with the replay's duration, Show Replay,
  * Replace, and Discard.
+ *
+ * The transfer to the student runs underneath this card (D-001). It is reported
+ * but never waited on: a replay whose clip is still in flight can still be
+ * shown, because the student's screen covers that case. Only an outright
+ * failure holds Show Replay back, and then with a retry (section 3.2).
  */
-function ReplayReadyCard({ replay }: { replay: PendingReplayControls }) {
+function ReplayReadyCard({
+  replay,
+  delivery,
+}: {
+  replay: PendingReplayControls;
+  delivery: ClipDelivery;
+}) {
   const clip = replay.clip;
   if (!clip) {
     return null;
   }
 
+  const failed = delivery.phase === 'failed';
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <View style={styles.readyDot} />
+        <View style={[styles.readyDot, failed && styles.readyDotFailed]} />
         <Text style={styles.cardTitle}>Replay ready</Text>
         <Text style={styles.cardDuration}>last {clip.requestedSeconds} seconds</Text>
       </View>
 
+      <DeliveryStatus delivery={delivery} />
+
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Show replay"
-        accessibilityHint="Shows the prepared replay"
+        accessibilityHint="Shows the prepared replay on both screens"
+        accessibilityState={{ disabled: failed }}
+        disabled={failed}
         onPress={replay.show}
-        style={({ pressed }) => [styles.showButton, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.showButton,
+          failed && styles.disabled,
+          pressed && styles.pressed,
+        ]}
       >
         <Text style={styles.showButtonText}>Show Replay</Text>
       </Pressable>
 
       <View style={styles.secondaryRow}>
+        {failed ? <ConfirmButton label="Retry sending" onPress={delivery.retry} /> : null}
         <SecondaryButton label="Replace" onPress={replay.replace} />
         <SecondaryButton label="Discard" tone="warning" onPress={replay.discard} />
       </View>
     </View>
   );
+}
+
+/**
+ * One line of plain language, never a technical one (spec section 4.1: the
+ * interface shows connection quality without jargon, and the same applies
+ * here). No byte counts, no filenames.
+ */
+function DeliveryStatus({ delivery }: { delivery: ClipDelivery }) {
+  switch (delivery.phase) {
+    case 'waitingForStudent':
+      return <Text style={styles.deliveryNote}>Will send when the student joins</Text>;
+    case 'sending':
+      return (
+        <Text style={styles.deliveryNote}>
+          Sending to the student {Math.round(delivery.progress * 100)}%
+        </Text>
+      );
+    case 'delivered':
+      return <Text style={styles.deliveryNote}>Ready on the student&apos;s device</Text>;
+    case 'failed':
+      return (
+        <Text style={styles.deliveryFailed}>
+          The replay could not be sent to the student. The session is unaffected.
+        </Text>
+      );
+    default:
+      return null;
+  }
 }
 
 /**
@@ -216,6 +273,8 @@ const styles = StyleSheet.create({
   cardDuration: { color: colors.textMuted, fontSize: 14 },
   cardHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs + 2 },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  deliveryFailed: { color: colors.warning, fontSize: 13 },
+  deliveryNote: { color: colors.textMuted, fontSize: 13 },
   confirmButton: {
     alignItems: 'center',
     backgroundColor: colors.accent,
@@ -249,6 +308,7 @@ const styles = StyleSheet.create({
   prepareRow: { flexDirection: 'row', gap: spacing.sm },
   pressed: { opacity: 0.8 },
   readyDot: { backgroundColor: colors.good, borderRadius: radius.pill, height: 10, width: 10 },
+  readyDotFailed: { backgroundColor: colors.warning },
   secondaryButton: {
     alignItems: 'center',
     backgroundColor: colors.surface,
