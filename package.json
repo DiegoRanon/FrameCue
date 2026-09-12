@@ -18,13 +18,23 @@
     "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "doctor": "npx expo-doctor",
     "android:install": "node scripts/android-run.mjs --no-build",
-    "android:expo": "node scripts/android-jdk.mjs && expo run:android"
+    "android:expo": "node scripts/android-jdk.mjs && expo run:android",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase test db",
+    "db:types": "supabase gen types typescript --local > src/backend/database.types.ts",
+    "functions:serve": "supabase functions serve --env-file supabase/functions/.env"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.24",
     "@livekit/react-native": "^2.12.0",
     "@livekit/react-native-webrtc": "^144.1.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "9.1.0",
+    "@supabase/supabase-js": "^2.116.0",
     "expo": "~57.0.18",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.16",
     "expo-file-system": "~57.0.6",
     "expo-keep-awake": "~57.0.1",
@@ -58,6 +68,7 @@
     "jest-expo": "~57.0.5",
     "prettier": "^3.9.6",
     "react-dom": "19.2.3",
+    "supabase": "^2.117.0",
     "test-renderer": "^1.2.0",
     "typescript": "~6.0.3"
   }

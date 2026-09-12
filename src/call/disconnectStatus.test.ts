@@ -34,6 +34,14 @@ describe('describeDisconnect', () => {
     expect(describeDisconnect(ROOM_DELETED)?.canRejoin).toBe(false);
   });
 
+  it('marks a deleted room as the end of the session, not an error (FR-17)', () => {
+    expect(describeDisconnect(ROOM_DELETED)?.ended).toBe(true);
+    expect(describeDisconnect(PARTICIPANT_REMOVED)?.ended).toBe(true);
+    for (const reason of [undefined, DUPLICATE_IDENTITY, SERVER_SHUTDOWN, JOIN_FAILURE]) {
+      expect(describeDisconnect(reason)?.ended).toBe(false);
+    }
+  });
+
   it('explains a duplicate join rather than looping the user back in', () => {
     const status = describeDisconnect(DUPLICATE_IDENTITY);
     expect(status?.title).toBe('Joined somewhere else');

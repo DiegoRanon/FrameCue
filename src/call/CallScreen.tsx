@@ -1,24 +1,50 @@
 import { AudioSession, LiveKitRoom } from '@livekit/react-native';
 import { useKeepAwake } from 'expo-keep-awake';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { ApiError, describeApiError } from '@/backend/api';
 import { CoachLiveView } from '@/call/CoachLiveView';
 import { MessageScreen } from '@/call/components/MessageScreen';
 import { describeDisconnect, type DisconnectStatus } from '@/call/disconnectStatus';
 import { requestCallPermissions } from '@/call/permissions';
 import type { CallRole } from '@/call/roles';
-import { callRoomOptions } from '@/call/roomOptions';
+import { callRoomOptions, type FacingMode } from '@/call/roomOptions';
 import { StudentLiveView } from '@/call/StudentLiveView';
-import { livekitConfigFor, missingLivekitConfig } from '@/config/env';
+import type { CallCredentials } from '@shared/contract';
 
 type Phase = 'checking' | 'denied' | 'ready';
 
+type CallScreenProps = {
+  role: CallRole;
+  /**
+   * Called on every join attempt. Credentials are short-lived (NFR-08), so a
+   * Rejoin must never reuse the ones from the first connection.
+   */
+  fetchCredentials: () => Promise<CallCredentials>;
+  facingMode: FacingMode;
+  /** The output chosen in the pre-call check, or null for the default route. */
+  audioOutput: string | null;
+  /** Coach only: ends the session for both participants (FR-17). */
+  onEndSession?: () => Promise<void>;
+  /** The session is over - ended by the coach, or no longer joinable. */
+  onEnded: () => void;
+  onExit: () => void;
+};
+
 /**
- * Everything that has to be true before media can flow: configuration present,
- * camera and microphone granted, audio session started. Only then is the room
- * connected, so the live views can assume a working call.
+ * Everything that has to be true before media can flow: camera and microphone
+ * granted, credentials issued by the backend, audio session started. Only then
+ * is the room connected, so the live views can assume a working call.
  */
-export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => void }) {
+export function CallScreen({
+  role,
+  fetchCredentials,
+  facingMode,
+  audioOutput,
+  onEndSession,
+  onEnded,
+  onExit,
+}: CallScreenProps) {
   // A student on a tripod never touches the screen, so the device would sleep
   // mid-drill and take the video with it. Held for the whole call screen and
   // released automatically when it unmounts.
@@ -29,11 +55,17 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [dropped, setDropped] = useState<DisconnectStatus | null>(null);
-  // Changing this remounts LiveKitRoom, which is how Rejoin reconnects without
-  // sending the user back out to the role picker.
+  // Changing this refetches credentials and remounts LiveKitRoom, which is how
+  // Rejoin reconnects without sending the user back out of the session.
   const [joinAttempt, setJoinAttempt] = useState(0);
+  // Tagged with the attempt they were fetched for, so stale credentials are
+  // never used for a newer attempt.
+  const [credentials, setCredentials] = useState<{
+    attempt: number;
+    value: CallCredentials;
+  } | null>(null);
 
-  const config = livekitConfigFor(role);
+  const roomOptions = useMemo(() => callRoomOptions(facingMode), [facingMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +81,35 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
     };
   }, [attempt]);
 
+  useEffect(() => {
+    if (phase !== 'ready') {
+      return;
+    }
+    let cancelled = false;
+    fetchCredentials()
+      .then((value) => {
+        if (!cancelled) {
+          setCredentials({ attempt: joinAttempt, value });
+        }
+      })
+      .catch((caught: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        if (
+          caught instanceof ApiError &&
+          (caught.code === 'session_ended' || caught.code === 'session_expired')
+        ) {
+          onEnded();
+          return;
+        }
+        setError(describeApiError(caught));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchCredentials, joinAttempt, onEnded, phase]);
+
   const retryPermissions = useCallback(() => {
     setPhase('checking');
     setAttempt((value) => value + 1);
@@ -57,16 +118,39 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
   /**
    * AC-14: a dropped connection is a recoverable state, not a dead end. The
    * live views unmount when this renders, which is what tears down the replay
-   * buffer and deletes any clip (FR-16).
+   * buffer and deletes any clip (FR-16). A deleted room is different: the
+   * coach ended the session, so there is nothing to rejoin.
    */
-  const onDisconnected = useCallback((reason?: number) => {
-    setDropped(describeDisconnect(reason));
-  }, []);
+  const onDisconnected = useCallback(
+    (reason?: number) => {
+      const status = describeDisconnect(reason);
+      if (status?.ended) {
+        onEnded();
+        return;
+      }
+      setDropped(status);
+    },
+    [onEnded],
+  );
 
   const rejoin = useCallback(() => {
     setDropped(null);
+    setError(null);
     setJoinAttempt((value) => value + 1);
   }, []);
+
+  const endSession = useMemo(
+    () =>
+      onEndSession
+        ? async () => {
+            await onEndSession();
+            // Unmounting the room disconnects this device even if LiveKit could
+            // not be told to close the room.
+            onEnded();
+          }
+        : undefined,
+    [onEndSession, onEnded],
+  );
 
   useEffect(() => {
     if (phase !== 'ready') {
@@ -75,30 +159,20 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
     // Routes audio to the speaker and sets the call audio mode. Must be
     // running before the room connects, and stopped when leaving so the
     // device returns to normal audio behaviour.
-    void AudioSession.startAudioSession();
+    AudioSession.startAudioSession()
+      .then(() => (audioOutput ? AudioSession.selectAudioOutput(audioOutput) : undefined))
+      .catch(() => undefined);
     return () => {
       void AudioSession.stopAudioSession();
     };
-  }, [phase]);
-
-  if (!config) {
-    return (
-      <MessageScreen
-        title="Not configured yet"
-        body="Add the LiveKit values to .env and restart the app. See .env.example for how to generate a token."
-        details={missingLivekitConfig(role).map((name) => `${name} is missing`)}
-        primaryAction={{ label: 'Back', onPress: onExit }}
-      />
-    );
-  }
+  }, [audioOutput, phase]);
 
   if (error) {
     return (
       <MessageScreen
         title="Could not join"
-        body="The session could not be joined. Check the connection and the token, then try again."
-        details={[error]}
-        primaryAction={{ label: 'Try again', onPress: () => setError(null) }}
+        body={error}
+        primaryAction={{ label: 'Try again', onPress: rejoin }}
         secondaryAction={{ label: 'Back', onPress: onExit }}
       />
     );
@@ -131,19 +205,30 @@ export function CallScreen({ role, onExit }: { role: CallRole; onExit: () => voi
     );
   }
 
+  const current = credentials?.attempt === joinAttempt ? credentials.value : null;
+  if (!current) {
+    return <MessageScreen title="Joining" body="Connecting to the session…" />;
+  }
+
   return (
     <LiveKitRoom
       key={joinAttempt}
-      serverUrl={config.url}
-      token={config.token}
+      serverUrl={current.livekitUrl}
+      token={current.token}
       connect
       audio
       video
-      options={callRoomOptions}
-      onError={(caught) => setError(caught.message)}
+      options={roomOptions}
+      onError={() =>
+        setError('The live call could not be started. Check the connection and try again.')
+      }
       onDisconnected={onDisconnected}
     >
-      {role === 'coach' ? <CoachLiveView onLeave={onExit} /> : <StudentLiveView onLeave={onExit} />}
+      {role === 'coach' ? (
+        <CoachLiveView onLeave={onExit} onEndSession={endSession} />
+      ) : (
+        <StudentLiveView onLeave={onExit} />
+      )}
     </LiveKitRoom>
   );
 }

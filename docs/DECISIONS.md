@@ -435,3 +435,170 @@ also makes Return to Live wait for a re-subscribe instead of being instant (NFR-
 **Cost / consequences:** The live video keeps decoding underneath a replay that completely covers it, which
 costs some GPU and battery during review. The covered stage is removed from the accessibility tree so a
 screen reader does not announce two stages.
+
+---
+
+## D-024 - Hosted Supabase for devices, local stack for RLS tests only
+
+**Date:** 2026-09-12 **Status:** Accepted **Milestone:** M6
+
+Phones talk to a hosted Supabase project. The local Docker stack (`npm run db:start`) exists for
+`npm run db:test`, which runs the pgTAP suite in `supabase/tests/database`, and for serving the edge
+functions during development.
+
+**Why:** A phone cannot reach `127.0.0.1`, and sign-in emails from the local stack point at the local API, so
+device testing against it means LAN addresses and rewritten URLs. The hosted project provides TLS (NFR-07),
+real email, and reachable functions. RLS is the part of M6 most worth proving automatically, and pgTAP needs
+a real Postgres.
+
+**Cost / consequences:** Two environments to keep in step: migrations reach the hosted project with
+`supabase db push`, auth settings and the email template with `supabase config push`, and secrets with
+`supabase secrets set`. `npm run verify` stays Docker-free; `npm run db:test` is a separate step.
+
+---
+
+## D-025 - Invitation tokens are derived, and only their hash is stored
+
+**Date:** 2026-09-12 **Status:** Accepted **Milestone:** M6
+
+A token is `base64url(HMAC-SHA256(INVITE_TOKEN_SECRET, invitation id))`, and `invitations.token_hash` holds its
+SHA-256. The `invitation` function finds an invitation by hashing the token it was given.
+
+**Why:** Spec section 7.4 asks for `token_hash`, and NFR-10 keeps tokens out of anything that could be logged
+or dumped. But the dashboard must let a coach copy the link again (section 4), which a stored hash alone
+cannot do. Deriving the token lets the server rebuild the same link on demand while the database never holds
+it, so neither a table dump nor a backup can open a lesson.
+
+**Cost / consequences:** The secret is load-bearing: changing `INVITE_TOKEN_SECRET` invalidates every link
+already sent. Revoking one invitation without touching the others means replacing its row, which M6 does not
+need.
+
+---
+
+## D-026 - LiveKit credentials come from two edge functions; the app holds no LiveKit configuration
+
+**Date:** 2026-09-12 **Status:** Accepted, replaces the M1 development tokens **Milestone:** M6
+
+`coach-sessions` (signed-in coach: create, inviteLink, join, end) and `invitation` (no account: preview,
+join). Both mint a LiveKit token with a 10-minute TTL; grants limited to join, publish, subscribe, and data; a
+fixed identity, `coach-<user id>` or `student-<invitation id>`; and one room per session,
+`framecue-<session id>`. The LiveKit URL arrives with the token.
+
+The request and response schemas (`supabase/functions/_shared/contract.ts`) and the session rules
+(`policy.ts`) are imported by the functions and by the app, through the `@shared/*` alias.
+
+**Why:** Tokens must be short-lived and issued only to invited participants (NFR-08), which rules out
+anything configured on the device. Fixed identities enforce one student per session without extra code:
+LiveKit evicts the older connection, and `describeDisconnect` already explains that to the evicted device.
+No `roomAdmin` or `roomRecord` grant means no participant can start egress (NFR-09). Two functions rather
+than one per action keep the auth model obvious: everything in `coach-sessions` needs a coach, nothing in
+`invitation` does.
+
+`verify_jwt` is off for both. The student has no JWT, and the gateway check does not accept the newer
+publishable keys. `coach-sessions` verifies the coach's access token against Supabase Auth itself, and every
+session read goes through a client acting as the coach, so RLS still decides.
+
+**Cost / consequences:** The shared files may import nothing but `zod` and each other, with `.ts` extensions
+on relative imports because Deno requires them; the root `tsconfig.json` sets `allowImportingTsExtensions`
+and excludes the Deno-only files. Deno code is not type-checked by `npm run verify` - there is no Deno
+toolchain on this machine - so the functions are proven by running them against the local stack instead.
+
+---
+
+## D-027 - End Session deletes the LiveKit room
+
+**Date:** 2026-09-12 **Status:** Accepted **Milestone:** M6
+
+The coach's Leave button becomes End, behind a confirmation. `coach-sessions end` marks the session ended,
+expires its invitation, and deletes the LiveKit room, which disconnects both devices with `ROOM_DELETED`.
+`describeDisconnect` reports that as `ended`, and both devices show Session ended (FR-17).
+
+**Why:** A control message would depend on the student's app receiving and obeying it. Deleting the room is
+authoritative, and the status change underneath means neither side can get new credentials to come back. The
+status is written first, so a LiveKit outage cannot leave a session that looks ended but can still be joined.
+
+**Cost / consequences:** Leaving without ending is the system back gesture; the session then stays open on
+the dashboard. If LiveKit is unreachable when ending, the function still succeeds with `roomClosed: false`:
+the coach's device leaves, and the student stays in an empty room until they leave.
+
+---
+
+## D-028 - Invitation and sign-in links are https App Links on a static invite host
+
+**Date:** 2026-09-12 **Status:** Accepted **Milestone:** M6
+
+`https://<invite host>/join/<token>` and `https://<invite host>/auth/callback`. The host serves `web/invite`:
+`.well-known/assetlinks.json` for Android verification, and a static fallback page for a link opened without
+the app. The app declares an `autoVerify` intent filter for both paths, and Expo Router routes on the path.
+
+**Why:** WhatsApp, Gmail, and Google Messages only make http(s) links tappable, so a `framecue://` link would
+reach most students as plain text (AC-02). The fallback page cannot come from a Supabase edge function,
+because HTML responses on the functions domain are served as plain text, so the host is a separate static
+site.
+
+**Cost / consequences:** A domain the project controls, and a certificate fingerprint per signing key;
+`assetlinks.json` holds the React Native debug key until release signing exists. The token is in the path,
+so the static host's access logs and messenger link-preview crawlers can see it. The fallback page loads no
+scripts or third-party resources, and a token only admits a student to one lesson's join screen. Moving the
+token into the URL fragment would hide it from servers and is the first thing to revisit. iOS Universal
+Links are M8.
+
+---
+
+## D-029 - The sign-in email carries a magic link and a one-time code
+
+**Date:** 2026-09-12 **Status:** Accepted, extends the approved plan (approved 2026-09-12) **Milestone:** M6
+
+`supabase/templates/sign_in.html` serves as both the magic-link and the confirmation template, and contains
+the link and `{{ .Token }}`. The app signs in with PKCE (`exchangeCodeForSession`) when the link is tapped,
+or with `verifyOtp` when the code is typed.
+
+**Why:** PKCE ties a link to the phone that requested it. A coach who opens the email on a laptop, or in a
+mail app that breaks the redirect, would otherwise have no way in. The confirmation template matters because
+a coach's very first sign-in is sent as a signup confirmation, not as a magic link.
+
+**Cost / consequences:** One more field on the sign-in screen. Supabase's built-in email sender is
+rate-limited and only delivers to the project's own team members, so custom SMTP is required before any
+coach outside the team can sign in.
+
+---
+
+## D-030 - Invitations expire an hour after the scheduled end, and can be reused until then
+
+**Date:** 2026-09-12 **Status:** Accepted, interpretation **Milestone:** M6
+
+`expires_at = scheduled_at + duration + 60 minutes`, set when the session is created and moved to the present
+when it is ended. A student may join at any time before that, including before the scheduled start, and may
+open the same link as often as needed. `used_at` records the first join.
+
+**Why:** Spec section 5.1 says the link expires when the session ends and may also expire after a
+configurable window; the hour allows for a lesson that starts late. Reuse is required by M5: Rejoin after a
+dropped connection, and reopening the invitation after a force-close (AC-12), both need the link to keep
+working. The window is a constant in `policy.ts` rather than an environment variable, so the dashboard and
+the functions cannot disagree about which sessions are joinable.
+
+**Cost / consequences:** Changing the window means redeploying both functions and the app. A forwarded link
+works until it expires, but only one device can hold the student identity at a time (D-026).
+
+---
+
+## D-031 - Dependencies added in M6
+
+**Date:** 2026-09-12 **Status:** Accepted **Milestone:** M6
+
+`@supabase/supabase-js`; via `npx expo install`, so versions follow SDK 57 (D-014, D-017),
+`@react-native-async-storage/async-storage` for the auth session, `expo-clipboard` for Copy link, and
+`@react-native-community/datetimepicker` for Create Session; and `supabase` as a devDependency, which pins
+the CLI version. The pre-call test tone is a bundled WAV played through the existing `expo-video`.
+
+**Why:** AsyncStorage is Supabase's documented React Native storage, and a Supabase session is larger than
+`expo-secure-store` handles comfortably. Reusing `expo-video` for a one-second tone avoids a second media
+library, and the device preview uses LiveKit's own `createLocalVideoTrack` and `useTrackVolume`, so the
+check opens the camera and microphone the same way the call does.
+
+**Cost / consequences:** A dev-client rebuild. The auth session sits unencrypted in AsyncStorage; it holds a
+refresh token and no media. `npx expo install --check` reports patch updates for several Expo packages that
+predate M6; they were left unchanged. Two behaviours still need confirming on a device: whether
+`useTrackVolume` reports a level for a local track before any room is joined, and whether `expo-video` plays
+an audio-only file while the call audio session is active. The fallbacks are showing the meter only in the
+call, and `expo-audio`.

@@ -1,12 +1,12 @@
 {
-  "_comment": "Copy to framecue.local.json and fill in. That file is git-ignored and must never be committed.",
-  "_livekitUrl": "LiveKit Cloud project URL, e.g. wss://your-project.livekit.cloud",
-  "livekitUrl": "",
+  "_comment": "Copy to framecue.local.json and fill in. That file is git-ignored. The values are embedded at build time, so rebuild with `npm run android` after editing (D-010).",
 
-  "_livekitRoom": "Room both devices join during development. Must match the tokens below.",
-  "livekitRoom": "framecue-dev",
+  "_supabaseUrl": "Hosted Supabase project URL, e.g. https://abcdefgh.supabase.co",
+  "supabaseUrl": "",
 
-  "_tokens": "One per role: two devices need two identities or the second connection evicts the first. lk token create --api-key <key> --api-secret <secret> --join --room framecue-dev --identity coach --valid-for 24h",
-  "coachToken": "",
-  "studentToken": ""
+  "_supabasePublishableKey": "Project Settings > API Keys > publishable key (sb_publishable_...). Not a secret: RLS and the edge functions decide what it can do.",
+  "supabasePublishableKey": "sb_publishable_H22vGuCz5bGsqs8djvcZiQ_K24bDx3R",
+
+  "_inviteHost": "Host serving web/invite, without https://, e.g. yourname.github.io. Invitation and sign-in links are App Links on this host.",
+  "inviteHost": ""
 }

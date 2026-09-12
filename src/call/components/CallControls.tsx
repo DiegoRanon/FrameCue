@@ -8,6 +8,10 @@ type ControlProps = {
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onLeave: () => void;
+  /** The coach's version of this button ends the session for both (FR-17). */
+  leaveLabel?: string;
+  leaveHint?: string;
+  leaveDisabled?: boolean;
   disabled?: boolean;
 };
 
@@ -21,6 +25,9 @@ export function CallControls({
   onToggleMic,
   onToggleCamera,
   onLeave,
+  leaveLabel = 'Leave',
+  leaveHint = 'Leave the session',
+  leaveDisabled = false,
   disabled = false,
 }: ControlProps) {
   return (
@@ -39,7 +46,13 @@ export function CallControls({
         onPress={onToggleCamera}
         disabled={disabled}
       />
-      <ControlButton label="Leave" hint="Leave the session" danger onPress={onLeave} />
+      <ControlButton
+        label={leaveLabel}
+        hint={leaveHint}
+        danger
+        onPress={onLeave}
+        disabled={leaveDisabled}
+      />
     </View>
   );
 }

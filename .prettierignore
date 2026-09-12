@@ -15,3 +15,8 @@ docs/plans/
 
 # Tooling configuration owned by Trunk.
 .trunk/
+
+# Supabase CLI state and generated database types.
+supabase/.temp/
+supabase/.branches/
+src/backend/database.types.ts

@@ -1,7 +1,7 @@
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import type { ReactNode } from 'react';
-import { useCallback } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CallControls } from '@/call/components/CallControls';
@@ -18,6 +18,11 @@ type LiveCallLayoutProps = {
   emptyStageMessage: string;
   stageLabel: string;
   onLeave: () => void;
+  /**
+   * Coach only. Replaces Leave with End, which ends the session for both
+   * participants after a confirmation (FR-17). Resolves once it has ended.
+   */
+  onEndSession?: () => Promise<void>;
   /** Role-specific area under the stage: replay controls for the coach. */
   footer?: ReactNode;
   /**
@@ -44,6 +49,7 @@ export function LiveCallLayout({
   emptyStageMessage,
   stageLabel,
   onLeave,
+  onEndSession,
   footer,
   stageContent,
   modeLabel = 'LIVE',
@@ -53,6 +59,8 @@ export function LiveCallLayout({
   const room = useRoomContext();
   const { localParticipant, isCameraEnabled, isMicrophoneEnabled } = useLocalParticipant();
   const { remoteTrack, localTrack } = useCallTracks();
+  const [ending, setEnding] = useState(false);
+  const [endError, setEndError] = useState<string | null>(null);
 
   const status = useConnectionStatus();
   const reviewing = Boolean(stageContent);
@@ -69,6 +77,33 @@ export function LiveCallLayout({
     void room.disconnect();
     onLeave();
   }, [onLeave, room]);
+
+  const confirmEnd = useCallback(() => {
+    if (!onEndSession) {
+      return;
+    }
+    // Ending is irreversible for both people, so it is never one tap.
+    Alert.alert(
+      'End the session?',
+      'This ends the lesson for you and your student. Nothing from it is saved.',
+      [
+        { text: 'Keep going', style: 'cancel' },
+        {
+          text: 'End session',
+          style: 'destructive',
+          onPress: () => {
+            setEnding(true);
+            setEndError(null);
+            // On success the call screen is replaced, so only failure lands here.
+            onEndSession().catch(() => {
+              setEnding(false);
+              setEndError('The session could not be ended. Check the connection and try again.');
+            });
+          },
+        },
+      ],
+    );
+  }, [onEndSession]);
 
   return (
     <View style={styles.root}>
@@ -107,12 +142,22 @@ export function LiveCallLayout({
       {footer}
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + spacing.sm }]}>
+        {endError ? (
+          <Text accessibilityLiveRegion="polite" style={styles.endError}>
+            {endError}
+          </Text>
+        ) : null}
         <CallControls
           micEnabled={isMicrophoneEnabled}
           cameraEnabled={isCameraEnabled}
           onToggleMic={toggleMic}
           onToggleCamera={toggleCamera}
-          onLeave={leave}
+          onLeave={onEndSession ? confirmEnd : leave}
+          leaveLabel={onEndSession ? (ending ? 'Ending…' : 'End') : 'Leave'}
+          leaveHint={
+            onEndSession ? 'End the session for you and your student' : 'Leave the session'
+          }
+          leaveDisabled={ending}
         />
       </View>
     </View>
@@ -122,6 +167,13 @@ export function LiveCallLayout({
 const styles = StyleSheet.create({
   badges: { alignItems: 'flex-start', gap: spacing.xs + 2 },
   controls: { backgroundColor: colors.background },
+  endError: {
+    color: colors.warning,
+    fontSize: 14,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    textAlign: 'center',
+  },
   overlayTop: {
     alignItems: 'flex-start',
     flexDirection: 'row',

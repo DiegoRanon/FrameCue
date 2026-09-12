@@ -27,7 +27,13 @@ import { useReplayDirector } from '@/replay/useReplayDirector';
  * coach's own controls and the live layout underneath is untouched (NFR-04,
  * AC-14).
  */
-export function CoachLiveView({ onLeave }: { onLeave: () => void }) {
+export function CoachLiveView({
+  onLeave,
+  onEndSession,
+}: {
+  onLeave: () => void;
+  onEndSession?: () => Promise<void>;
+}) {
   const { remoteTrack } = useCallTracks();
   const status = useConnectionStatus();
 
@@ -83,6 +89,7 @@ export function CoachLiveView({ onLeave }: { onLeave: () => void }) {
       stageLabel="Student video"
       emptyStageMessage="Waiting for the student to join."
       onLeave={onLeave}
+      onEndSession={onEndSession}
       modeLabel={replay.modeLabel}
       showSelfTile={!reviewing}
       stageContent={reviewing ? <ReplayReviewStage player={player} /> : undefined}

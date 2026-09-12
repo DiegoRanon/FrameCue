@@ -1,7 +1,7 @@
 /**
- * A session has exactly one coach and one student (spec section 5.1).
- * Until M6 the role is chosen on a development screen; after that it comes
- * from the account (coach) or the invitation deep link (student).
+ * A session has exactly one coach and one student (spec section 5.1). The role
+ * comes from how the session was opened: from the signed-in coach's dashboard,
+ * or from an invitation link (student).
  */
 export type CallRole = 'coach' | 'student';
 

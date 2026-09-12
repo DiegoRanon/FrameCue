@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Open in FrameCue</title>
+    <style>
+      body {
+        background: #0b0f14;
+        color: #f5f7fa;
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+        margin: 0 auto;
+        max-width: 32rem;
+        padding: 2rem 1.5rem;
+      }
+      p {
+        color: #c9d1da;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Served for /join/<token> and /auth/callback when the link was opened
+      somewhere other than a phone with FrameCue installed. Deliberately static:
+      no scripts, no analytics, no external requests, so nothing in the URL
+      reaches a third party (NFR-10).
+    -->
+    <h1>Open this link in FrameCue</h1>
+    <p>
+      FrameCue invitation and sign-in links open in the FrameCue app. If you are seeing this page,
+      open the link again on the phone where FrameCue is installed.
+    </p>
+    <p>
+      Signing in as a coach? Type the code from the same email into the app instead of using the
+      link.
+    </p>
+  </body>
+</html>

@@ -4,10 +4,9 @@ import { join } from 'node:path';
 import type { ExpoConfig } from 'expo/config';
 
 type LocalConfig = {
-  livekitUrl?: string;
-  livekitRoom?: string;
-  coachToken?: string;
-  studentToken?: string;
+  supabaseUrl?: string;
+  supabasePublishableKey?: string;
+  inviteHost?: string;
 };
 
 /**
@@ -23,7 +22,7 @@ function readLocalConfig(): LocalConfig {
   const root = typeof __dirname === 'string' ? __dirname : process.cwd();
   const path = join(root, 'framecue.local.json');
   if (!existsSync(path)) {
-    console.warn(`[framecue] No local config at ${path}; LiveKit values will be empty.`);
+    console.warn(`[framecue] No local config at ${path}; backend values will be empty.`);
     return {};
   }
   try {
@@ -35,12 +34,13 @@ function readLocalConfig(): LocalConfig {
 
 const local = readLocalConfig();
 
+const inviteHost = process.env.FRAMECUE_INVITE_HOST ?? local.inviteHost;
+
 /**
- * Values come from a git-ignored .env (see .env.example). Expo CLI loads .env
- * into process.env before this file is evaluated.
- *
- * Nothing secret belongs here long term: from M6 the backend mints LiveKit
- * tokens per participant and the dev token is dropped.
+ * Nothing secret belongs here. The Supabase publishable key only identifies the
+ * project - RLS and the edge functions decide what it can do - and LiveKit
+ * credentials are no longer configured at all: the backend issues them per
+ * participant, per session (M6).
  */
 const config: ExpoConfig = {
   name: 'FrameCue',
@@ -64,6 +64,22 @@ const config: ExpoConfig = {
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
+    // Invitation and sign-in links are https App Links on the invite host,
+    // verified against web/invite/.well-known/assetlinks.json, so tapping one in
+    // any messenger or mail app opens FrameCue directly (FR-02, FR-03).
+    intentFilters: inviteHost
+      ? [
+          {
+            action: 'VIEW',
+            autoVerify: true,
+            category: ['BROWSABLE', 'DEFAULT'],
+            data: [
+              { scheme: 'https', host: inviteHost, pathPrefix: '/join/' },
+              { scheme: 'https', host: inviteHost, pathPrefix: '/auth/' },
+            ],
+          },
+        ]
+      : undefined,
   },
   plugins: [
     'expo-router',
@@ -71,15 +87,16 @@ const config: ExpoConfig = {
     // and adds the camera/microphone permissions the live call needs.
     '@livekit/react-native-expo-plugin',
     '@config-plugins/react-native-webrtc',
+    '@react-native-community/datetimepicker',
   ],
   experiments: {
     typedRoutes: true,
   },
   extra: {
-    livekitUrl: process.env.LIVEKIT_URL ?? local.livekitUrl,
-    livekitRoom: process.env.LIVEKIT_ROOM ?? local.livekitRoom,
-    livekitCoachToken: process.env.LIVEKIT_COACH_TOKEN ?? local.coachToken,
-    livekitStudentToken: process.env.LIVEKIT_STUDENT_TOKEN ?? local.studentToken,
+    supabaseUrl: process.env.FRAMECUE_SUPABASE_URL ?? local.supabaseUrl,
+    supabasePublishableKey:
+      process.env.FRAMECUE_SUPABASE_PUBLISHABLE_KEY ?? local.supabasePublishableKey,
+    inviteHost,
   },
 };
 

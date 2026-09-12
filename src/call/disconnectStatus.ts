@@ -11,6 +11,11 @@ export type DisconnectStatus = {
   body: string;
   /** Whether offering a Rejoin button makes sense, or only a way out. */
   canRejoin: boolean;
+  /**
+   * The session itself is over - the coach ended it, which deletes the room
+   * (FR-17) - so the screen to show is Session ended, not an error.
+   */
+  ended: boolean;
 };
 
 /**
@@ -42,6 +47,7 @@ export function describeDisconnect(reason?: number): DisconnectStatus | null {
         title: 'Joined somewhere else',
         body: 'This session was opened on another device using the same link. Only one device can be in a session at a time.',
         canRejoin: true,
+        ended: false,
       };
 
     case REASON.PARTICIPANT_REMOVED:
@@ -50,6 +56,7 @@ export function describeDisconnect(reason?: number): DisconnectStatus | null {
         title: 'Session ended',
         body: 'The session has been ended. Nothing from it was saved.',
         canRejoin: false,
+        ended: true,
       };
 
     case REASON.SERVER_SHUTDOWN:
@@ -57,6 +64,7 @@ export function describeDisconnect(reason?: number): DisconnectStatus | null {
         title: 'Session interrupted',
         body: 'The connection was closed at the other end. Rejoining usually works straight away.',
         canRejoin: true,
+        ended: false,
       };
 
     case REASON.JOIN_FAILURE:
@@ -64,6 +72,7 @@ export function describeDisconnect(reason?: number): DisconnectStatus | null {
         title: 'Could not join',
         body: 'The session could not be joined. Check the connection and try again.',
         canRejoin: true,
+        ended: false,
       };
 
     default:
@@ -71,6 +80,7 @@ export function describeDisconnect(reason?: number): DisconnectStatus | null {
         title: 'Connection lost',
         body: 'The connection to the session dropped. Rejoining will restore the live call.',
         canRejoin: true,
+        ended: false,
       };
   }
 }

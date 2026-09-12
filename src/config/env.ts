@@ -1,52 +1,45 @@
 import Constants from 'expo-constants';
 
-import type { CallRole } from '@/call/roles';
-
 type Extra = {
-  livekitUrl?: string;
-  livekitCoachToken?: string;
-  livekitStudentToken?: string;
-  livekitRoom?: string;
+  supabaseUrl?: string;
+  supabasePublishableKey?: string;
+  inviteHost?: string;
 };
 
 const extra = (Constants.expoConfig?.extra ?? {}) as Extra;
 
 /**
- * Runtime configuration sourced from app.config.ts `extra`.
- *
- * The per-role tokens are a development convenience for M1-M5: two devices
- * need two identities, or the second connection evicts the first. From M6 the
- * backend mints a short-lived token per participant and these are removed.
+ * Runtime configuration sourced from app.config.ts `extra`, embedded at build
+ * time (D-010). Nothing here is secret, and LiveKit is not configured on the
+ * device at all: the backend issues short-lived credentials per participant.
  */
 export const env = {
-  livekitUrl: extra.livekitUrl ?? '',
-  livekitRoom: extra.livekitRoom ?? 'framecue-dev',
-  tokens: {
-    coach: extra.livekitCoachToken ?? '',
-    student: extra.livekitStudentToken ?? '',
-  },
+  supabaseUrl: extra.supabaseUrl ?? '',
+  supabasePublishableKey: extra.supabasePublishableKey ?? '',
+  inviteHost: extra.inviteHost ?? '',
 } as const;
 
-export type LivekitConfig = { url: string; token: string; room: string };
-
-export function livekitConfigFor(role: CallRole): LivekitConfig | null {
-  const token = env.tokens[role];
-  if (!env.livekitUrl || !token) {
-    return null;
-  }
-  return { url: env.livekitUrl, token, room: env.livekitRoom };
-}
-
-/** Which pieces are missing, phrased for the setup screen rather than a stack trace. */
-export function missingLivekitConfig(role: CallRole): string[] {
+/** Which pieces are missing, named as they appear in framecue.local.json. */
+export function missingBackendConfig(): string[] {
   const missing: string[] = [];
-  if (!env.livekitUrl) {
-    missing.push('LIVEKIT_URL');
+  if (!env.supabaseUrl) {
+    missing.push('supabaseUrl');
   }
-  if (!env.tokens[role]) {
-    missing.push(role === 'coach' ? 'LIVEKIT_COACH_TOKEN' : 'LIVEKIT_STUDENT_TOKEN');
+  if (!env.supabasePublishableKey) {
+    missing.push('supabasePublishableKey');
+  }
+  if (!env.inviteHost) {
+    missing.push('inviteHost');
   }
   return missing;
 }
 
-export const isLivekitConfigured = () => Boolean(env.livekitUrl);
+export const isBackendConfigured = () => missingBackendConfig().length === 0;
+
+/**
+ * Where a sign-in link returns the coach: a path on the invite host, which the
+ * Android App Link hands straight to the app.
+ */
+export function authCallbackUrl(): string {
+  return `https://${env.inviteHost}/auth/callback`;
+}
